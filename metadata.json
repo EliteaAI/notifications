@@ -1,0 +1,8 @@
+{
+  "name": "Notifications",
+  "version": "0.8",
+  "depends_on": [
+    "elitea_core"
+  ],
+  "init_after": []
+}
