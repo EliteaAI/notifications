@@ -15,7 +15,7 @@ class Notification(db.Base):
     uuid: Mapped[str] = mapped_column(UUID(as_uuid=True), unique=True, default=uuid.uuid4)
     is_seen: Mapped[bool] = mapped_column(Boolean, default=False)
     project_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     meta: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     event_type: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
