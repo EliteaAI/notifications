@@ -1,7 +1,7 @@
 from flask import request
 from tools import api_tools, auth, db, config as c, serialize
 
-from sqlalchemy import desc, asc
+from sqlalchemy import desc, asc, or_, cast, String
 from ...models.all import Notification
 from ...models.pd.notification import (
     NotificationBaseModel,
@@ -33,6 +33,8 @@ class PromptLibAPI(api_tools.APIModeHandler):
             sorting = desc if sort_order == 'desc' else asc
             only_new = request.args.get('only_new', False)
             only_total = request.args.get('only_total', False)
+            search = request.args.get('search', default=None, type=str)
+            event_type = request.args.get('event_type', default=None, type=str)
 
             query = session.query(
                 Notification
@@ -43,6 +45,16 @@ class PromptLibAPI(api_tools.APIModeHandler):
                 query = query.filter(
                     Notification.is_seen == False
                 )
+            if search:
+                search_pattern = f'%{search}%'
+                query = query.filter(
+                    or_(
+                        Notification.event_type.ilike(search_pattern),
+                        cast(Notification.meta, String).ilike(search_pattern),
+                    )
+                )
+            if event_type:
+                query = query.filter(Notification.event_type == event_type)
 
             total = query.count()
             if only_total:
