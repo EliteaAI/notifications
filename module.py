@@ -1,7 +1,10 @@
 import logging
 
+from pylon.core.tools import log  # pylint: disable=E0611,E0401,W0611
 from pylon.core.tools import module
-from tools import db, auth
+from tools import auth
+
+from .tasks import db_tasks
 
 from ..elitea_core.utils.sio_utils import get_event_room
 
@@ -17,7 +20,23 @@ class Module(module.ModuleModel):
         self.context.sio.on("connect", handler=self.sio_connect)
         self.context.sio.on("disconnect", handler=self.sio_disconnect)
 
+    def ready(self):
+        try:
+            from tools import this  # pylint: disable=E0401,C0415
+            this.for_module("admin").module.register_admin_task(
+                "create_notifications_user_id_index", db_tasks.create_notifications_user_id_index
+            )
+        except Exception as e:
+            log.exception("Failed to register admin tasks: %s", e)
+
     def deinit(self):
+        try:
+            from tools import this  # pylint: disable=E0401,C0415
+            this.for_module("admin").module.unregister_admin_task(
+                "create_notifications_user_id_index", db_tasks.create_notifications_user_id_index
+            )
+        except Exception as e:
+            log.exception("Failed to unregister admin tasks: %s", e)
         self.descriptor.deinit_all()
 
     # def init_db(self):
