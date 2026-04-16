@@ -1,5 +1,6 @@
 import logging
 
+from pylon.core.tools import log  # pylint: disable=E0611,E0401,W0611
 from pylon.core.tools import module
 from tools import db, auth
 
@@ -17,7 +18,23 @@ class Module(module.ModuleModel):
         self.context.sio.on("connect", handler=self.sio_connect)
         self.context.sio.on("disconnect", handler=self.sio_disconnect)
 
+    def ready(self):
+        try:
+            from tools import this  # pylint: disable=E0401,C0415
+            this.for_module("admin").module.register_admin_task(
+                "create_notifications_user_id_index", self.create_notifications_user_id_index
+            )
+        except Exception as e:
+            log.exception("Failed to register admin tasks: %s", e)
+
     def deinit(self):
+        try:
+            from tools import this  # pylint: disable=E0401,C0415
+            this.for_module("admin").module.unregister_admin_task(
+                "create_notifications_user_id_index", self.create_notifications_user_id_index
+            )
+        except Exception as e:
+            log.exception("Failed to unregister admin tasks: %s", e)
         self.descriptor.deinit_all()
 
     # def init_db(self):
@@ -46,3 +63,20 @@ class Module(module.ModuleModel):
     @auth.decorators.sio_disconnect()
     def sio_disconnect(self, sid, *args, **kwargs):
         """ Disconnect handler """
+
+    def create_notifications_user_id_index(self, *args, **kwargs):
+        """Admin task: create index on notifications.user_id for query performance.
+
+        Idempotent: safe to run multiple times (uses IF NOT EXISTS).
+        No params required.
+        """
+        sql = "CREATE INDEX IF NOT EXISTS ix_notifications_user_id ON centry.notifications (user_id);"
+        try:
+            with db.get_session() as session:
+                session.execute(db.text(sql))
+                session.commit()
+            log.info("create_notifications_user_id_index: index created (or already existed)")
+            return {"status": "ok", "sql": sql}
+        except Exception as e:  # pylint: disable=W0703
+            log.exception("create_notifications_user_id_index: failed")
+            return {"status": "error", "error": str(e)}
