@@ -1,7 +1,7 @@
 from flask import request
 from tools import api_tools, auth, db, config as c, serialize
 
-from sqlalchemy import desc, asc, or_, cast, String
+from sqlalchemy import asc, desc
 from ...models.all import Notification
 from ...models.pd.notification import (
     NotificationBaseModel,
@@ -11,6 +11,13 @@ from ...models.pd.notification import (
     NotificationBulkDeleteResponseModel,
 )
 from ....elitea_core.utils.constants import PROMPT_LIB_MODE
+from ...utils.query_helpers import (
+    DEFAULT_META_SEARCH_KEYS,
+    build_search_filter,
+    parse_csv_param,
+    parse_search_tokens,
+    sanitize_meta_keys,
+)
 
 
 class PromptLibAPI(api_tools.APIModeHandler):
@@ -33,8 +40,17 @@ class PromptLibAPI(api_tools.APIModeHandler):
             sorting = desc if sort_order == 'desc' else asc
             only_new = request.args.get('only_new', False)
             only_total = request.args.get('only_total', False)
-            search = request.args.get('search', default=None, type=str)
             event_type = request.args.get('event_type', default=None, type=str)
+            search_tokens = parse_search_tokens()
+            # FE may override the meta-key whitelist, but normally we use
+            # the BE-side default to avoid shipping ~80 bytes of static
+            # config on every request. See DEFAULT_META_SEARCH_KEYS.
+            meta_search_keys_param = parse_csv_param('meta_search_keys')
+            meta_search_keys = (
+                sanitize_meta_keys(meta_search_keys_param)
+                if meta_search_keys_param
+                else list(DEFAULT_META_SEARCH_KEYS)
+            )
 
             query = session.query(
                 Notification
@@ -45,14 +61,10 @@ class PromptLibAPI(api_tools.APIModeHandler):
                 query = query.filter(
                     Notification.is_seen == False
                 )
-            if search:
-                search_pattern = f'%{search}%'
-                query = query.filter(
-                    or_(
-                        Notification.event_type.ilike(search_pattern),
-                        cast(Notification.meta, String).ilike(search_pattern),
-                    )
-                )
+            search_filter = build_search_filter(search_tokens, meta_search_keys)
+            if search_filter is not None:
+                query = query.filter(search_filter)
+
             if event_type:
                 query = query.filter(Notification.event_type == event_type)
 
