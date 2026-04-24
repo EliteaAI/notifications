@@ -1,7 +1,7 @@
 from flask import request
 from tools import api_tools, auth, db, config as c, serialize
 
-from sqlalchemy import desc, asc, or_, cast, String
+from sqlalchemy import desc, asc
 from ...models.all import Notification
 from ...models.pd.notification import (
     NotificationBaseModel,
@@ -46,13 +46,16 @@ class PromptLibAPI(api_tools.APIModeHandler):
                     Notification.is_seen == False
                 )
             if search:
-                search_pattern = f'%{search}%'
-                query = query.filter(
-                    or_(
-                        Notification.event_type.ilike(search_pattern),
-                        cast(Notification.meta, String).ilike(search_pattern),
+                # Limit to 8 words to cap the number of AND-ilike clauses added to the query
+                # and prevent excessively expensive searches from unbounded user input.
+                # NOTE: rows without meta['message'] (un-backfilled or unsupported event types)
+                # are excluded from search results. Run notifications_backfill_messages first.
+                words = [w for w in search.strip().split() if w][:8]
+                for word in words:
+                    escaped = word.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+                    query = query.filter(
+                        Notification.meta['message'].astext.ilike(f'%{escaped}%', escape='\\')
                     )
-                )
             if event_type:
                 query = query.filter(Notification.event_type == event_type)
 
