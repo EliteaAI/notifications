@@ -4,12 +4,12 @@ import json
 
 from sqlalchemy import text  # pylint: disable=E0401
 from pylon.core.tools import log  # pylint: disable=E0611,E0401,W0611
-from tools import db  # pylint: disable=E0401
+from tools import db, config as c  # pylint: disable=E0401
 
 
 def create_notifications_user_id_index(*args, **kwargs):
     """Create index on notifications.user_id for query performance. Idempotent."""
-    sql = "CREATE INDEX IF NOT EXISTS ix_notifications_user_id ON centry.notifications (user_id);"
+    sql = f"CREATE INDEX IF NOT EXISTS ix_notifications_user_id ON {c.POSTGRES_SCHEMA}.notifications (user_id);"
     try:
         with db.get_session() as session:
             session.execute(text(sql))
@@ -141,7 +141,7 @@ def notifications_backfill_messages(*args, **kwargs):
             with db.get_session() as session:
                 result = session.execute(
                     text(
-                        "UPDATE centry.notifications "
+                        f"UPDATE {c.POSTGRES_SCHEMA}.notifications "
                         "SET meta = meta - 'message' "
                         "WHERE meta ? 'message'"
                     )
@@ -150,9 +150,9 @@ def notifications_backfill_messages(*args, **kwargs):
             log.info("notifications_backfill_messages: force reset cleared message from %d rows", result.rowcount)
 
         sql = text(
-            "SELECT id, event_type, meta FROM centry.notifications"
+            f"SELECT id, event_type, meta FROM {c.POSTGRES_SCHEMA}.notifications"
             if (force and dry_run) else
-            "SELECT id, event_type, meta FROM centry.notifications "
+            f"SELECT id, event_type, meta FROM {c.POSTGRES_SCHEMA}.notifications "
             "WHERE meta->>'message' IS NULL"
         )
 
@@ -166,7 +166,7 @@ def notifications_backfill_messages(*args, **kwargs):
                 with db.get_session() as session:
                     session.execute(
                         text(
-                            "UPDATE centry.notifications "
+                            f"UPDATE {c.POSTGRES_SCHEMA}.notifications "
                             "SET meta = jsonb_set(meta, '{message}', CAST(:msg AS jsonb)) "
                             "WHERE id = :id"
                         ),
@@ -181,7 +181,7 @@ def notifications_backfill_messages(*args, **kwargs):
                         with db.get_session() as session:
                             session.execute(
                                 text(
-                                    "UPDATE centry.notifications "
+                                    f"UPDATE {c.POSTGRES_SCHEMA}.notifications "
                                     "SET meta = jsonb_set(meta, '{message}', CAST(:msg AS jsonb)) "
                                     "WHERE id = :id"
                                 ),
