@@ -29,9 +29,6 @@ class Module(module.ModuleModel):
             this.for_module("admin").module.register_admin_task(
                 "notifications_backfill_messages", db_tasks.notifications_backfill_messages
             )
-            this.for_module("admin").module.register_admin_task(
-                "notifications_reset_messages_field", db_tasks.notifications_reset_messages_field
-            )
         except Exception as e:
             log.exception("Failed to register admin tasks: %s", e)
 
@@ -43,9 +40,6 @@ class Module(module.ModuleModel):
             )
             this.for_module("admin").module.unregister_admin_task(
                 "notifications_backfill_messages", db_tasks.notifications_backfill_messages
-            )
-            this.for_module("admin").module.unregister_admin_task(
-                "notifications_reset_messages_field", db_tasks.notifications_reset_messages_field
             )
         except Exception as e:
             log.exception("Failed to unregister admin tasks: %s", e)

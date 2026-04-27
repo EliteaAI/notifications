@@ -1,7 +1,6 @@
 """Database maintenance tasks for notifications."""
 
 import json
-from urllib.parse import quote
 
 from sqlalchemy import text  # pylint: disable=E0401
 from pylon.core.tools import log  # pylint: disable=E0611,E0401,W0611
@@ -16,33 +15,8 @@ def create_notifications_user_id_index(*args, **kwargs):
             session.execute(text(sql))
             session.commit()
         log.info("create_notifications_user_id_index: index created (or already existed)")
-        return {"status": "ok", "sql": sql}
     except Exception as e:  # pylint: disable=W0703
         log.exception("create_notifications_user_id_index: failed")
-        return {"status": "error", "error": str(e)}
-
-
-def notifications_reset_messages_field(*args, **kwargs):
-    """
-    Remove meta['message'] from every notification row so the backfill can
-    regenerate all messages from scratch. Run notifications_backfill_messages after this.
-    """
-    try:
-        with db.get_session() as session:
-            result = session.execute(
-                text(
-                    "UPDATE centry.notifications "
-                    "SET meta = meta - 'message' "
-                    "WHERE meta ? 'message'"
-                )
-            )
-            session.commit()
-            cleared = result.rowcount
-        log.info("notifications_reset_messages_field: cleared message from %d rows", cleared)
-        return {"status": "ok", "cleared": cleared}
-    except Exception as e:  # pylint: disable=W0703
-        log.exception("notifications_reset_messages_field: failed")
-        return {"status": "error", "error": str(e)}
 
 
 def _build_message_for_row(event_type, meta):
@@ -51,17 +25,12 @@ def _build_message_for_row(event_type, meta):
 
     if et == 'index_data_changed':
         index_name = meta.get('index_name') or 'Index'
-        toolkit_id = meta.get('toolkit_id')
         error = (meta.get('error') or '').strip()
         reindex = meta.get('reindex')
         indexed = meta.get('indexed') or 0
         updated = meta.get('updated') or 0
         initiator = meta.get('initiator', '')
-        if toolkit_id:
-            encoded = quote(index_name, safe='')
-            link = f'[{index_name}](/toolkits/indexes/{toolkit_id}?index_name={encoded})'
-        else:
-            link = index_name
+        link = f'[{index_name}]()'
         if error:
             return f'Index {link} is failed.'
         if reindex:
@@ -71,9 +40,8 @@ def _build_message_for_row(event_type, meta):
 
     if et == 'chat_user_added':
         conv = meta.get('conversation_name') or 'chat'
-        conv_id = meta.get('conversation_id', '')
         initiator = meta.get('initiator_name')
-        link = f'[{conv}](/chat?conversation={conv_id})'
+        link = f'[{conv}]()'
         if initiator:
             return f'{initiator} added you to {link}'
         return f'You were added to {link}'
@@ -87,13 +55,13 @@ def _build_message_for_row(event_type, meta):
             f'Your personal access token {token} will expire in 24 hours. '
             f'After expiration, it will no longer work. '
             f'You can delete and recreate a new token if needed. '
-            f'[Manage Personal Access Tokens](/settings/tokens)'
+            f'[Manage Personal Access Tokens]()'
         )
 
     if et == 'bucket_expiration_warning':
         bucket = meta.get('bucket_name') or 'bucket'
         return (
-            f'Bucket [{bucket}](/artifacts?bucket={bucket}) will start deleting files '
+            f'Bucket [{bucket}]() will start deleting files '
             f'in 24 hours according to its retention policy (files are removed based '
             f"on each file's creation date; the bucket itself will remain)."
         )
@@ -104,8 +72,8 @@ def _build_message_for_row(event_type, meta):
         project_id = meta.get('project_id') or meta.get('source_project_id')
         reason = meta.get('reason') or ''
         reason_suffix = f' Reason: {reason}' if reason else ''
-        if app_id and version_id and project_id:
-            version_ref = f'[{version_id}](/agents/all/{app_id}/{version_id}?viewMode=owner)'
+        if app_id and version_id:
+            version_ref = f'[{version_id}]()'
         else:
             version_ref = str(version_id) if version_id else 'unknown'
         return f'Unpublished agent version id: {version_ref} from project id: {project_id}.{reason_suffix}'
@@ -160,27 +128,37 @@ def _build_message_for_row(event_type, meta):
 
 
 def notifications_backfill_messages(*args, **kwargs):
-    """
-    One-off backfill: compute meta['message'] for every notification row that does not
-    already have it. Idempotent — safe to re-run.
-    """
+    """Backfill meta['message'] for notifications; params: 'force' re-generates existing, 'dry_run' previews without writing."""
+    param = kwargs.get("param", "")
+    force = "force" in param
+    dry_run = "dry_run" in param
     updated = 0
     skipped = 0
     errors = 0
 
     try:
-        with db.get_session() as session:
-            rows = session.execute(
-                text(
-                    "SELECT id, event_type, meta FROM centry.notifications "
-                    "WHERE meta->>'message' IS NULL"
+        if force and not dry_run:
+            with db.get_session() as session:
+                result = session.execute(
+                    text(
+                        "UPDATE centry.notifications "
+                        "SET meta = meta - 'message' "
+                        "WHERE meta ? 'message'"
+                    )
                 )
-            ).fetchall()
+                session.commit()
+            log.info("notifications_backfill_messages: force reset cleared message from %d rows", result.rowcount)
 
-        log.info("notifications_backfill_messages: %d rows to process", len(rows))
+        sql = text(
+            "SELECT id, event_type, meta FROM centry.notifications"
+            if (force and dry_run) else
+            "SELECT id, event_type, meta FROM centry.notifications "
+            "WHERE meta->>'message' IS NULL"
+        )
 
         batch_size = 500
         pending = []
+        sample_messages = []
 
         def _flush_batch(batch):
             nonlocal updated, errors
@@ -215,29 +193,52 @@ def notifications_backfill_messages(*args, **kwargs):
                         log.warning("notifications_backfill_messages: failed row %d: %s", item["id"], row_e)
                         errors += 1
 
-        for row in rows:
-            row_id, event_type, meta = row
-            if not isinstance(meta, dict):
-                skipped += 1
-                continue
-            message = _build_message_for_row(event_type, meta)
-            if message is None:
-                skipped += 1
-                continue
-            pending.append({"id": row_id, "msg": json.dumps(message)})
-            if len(pending) >= batch_size:
-                _flush_batch(pending)
-                pending = []
+        log.info("notifications_backfill_messages: starting (batch_size=%d)", batch_size)
+
+        with db.get_session() as session:
+            cursor = session.execute(sql)
+            while True:
+                chunk = cursor.fetchmany(batch_size)
+                if not chunk:
+                    break
+                for row in chunk:
+                    row_id, event_type, meta = row
+                    if not isinstance(meta, dict):
+                        skipped += 1
+                        continue
+                    message = _build_message_for_row(event_type, meta)
+                    if message is None:
+                        skipped += 1
+                        continue
+                    if dry_run:
+                        if len(sample_messages) < 20:
+                            sample_messages.append({"id": row_id, "event_type": event_type, "message": message})
+                        updated += 1
+                        continue
+                    pending.append({"id": row_id, "msg": json.dumps(message)})
+                    if len(pending) >= batch_size:
+                        _flush_batch(pending)
+                        pending = []
 
         if pending:
             _flush_batch(pending)
+
+        if dry_run:
+            log.info(
+                "notifications_backfill_messages: dry_run — would_update=%d would_skip=%d",
+                updated, skipped,
+            )
+            for sample in sample_messages:
+                log.info(
+                    "  [%d] %s → %s",
+                    sample["id"], sample["event_type"], sample["message"],
+                )
+            return
 
         log.info(
             "notifications_backfill_messages: done — updated=%d skipped=%d errors=%d",
             updated, skipped, errors,
         )
-        return {"status": "ok", "updated": updated, "skipped": skipped, "errors": errors}
 
     except Exception as e:  # pylint: disable=W0703
         log.exception("notifications_backfill_messages: fatal error")
-        return {"status": "error", "error": str(e)}
