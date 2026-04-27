@@ -46,11 +46,7 @@ class PromptLibAPI(api_tools.APIModeHandler):
                     Notification.is_seen == False
                 )
             if search:
-                # Limit to 8 words to cap the number of AND-ilike clauses added to the query
-                # and prevent excessively expensive searches from unbounded user input.
-                # NOTE: rows without meta['message'] (un-backfilled or unsupported event types)
-                # are excluded from search results. Run notifications_backfill_messages first.
-                words = [w for w in search.strip().split() if w][:8]
+                words = search.strip().split()
                 for word in words:
                     escaped = word.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
                     query = query.filter(
