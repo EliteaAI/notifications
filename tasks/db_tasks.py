@@ -124,7 +124,7 @@ def _get_notifications_schema_candidates(target):
 
 
 def notifications_migrate_schema(*args, **kwargs):
-    """Move or merge notifications into c.POSTGRES_SCHEMA, params: legacy_schema=<schema>[;dry_run] or source_schema=<schema>[;dry_run]."""
+    """Move notifications table from legacy schema into c.POSTGRES_SCHEMA, params: legacy_schema=<schema>[;dry_run]."""
     param = kwargs.get("param", "") or ""
     dry_run = _has_dry_run_flag(param)
     target = c.POSTGRES_SCHEMA
@@ -142,18 +142,12 @@ def notifications_migrate_schema(*args, **kwargs):
                 candidate_counts,
             )
             log.info(
-                "notifications_migrate_schema: %s",
-                "to rehearse merge or move, re-run with param='legacy_schema=<schema>;dry_run'"
-                if dry_run else
-                "to migrate from another schema, re-run with param='legacy_schema=<schema>' or add ';dry_run' first",
+                "notifications_migrate_schema: to migrate from another schema, re-run with param='legacy_schema=<schema>' (add ';dry_run' to preview first)",
             )
             return
         log.info(
-            "notifications_migrate_schema: target schema '%s' is already the legacy default; %s",
+            "notifications_migrate_schema: target schema '%s' is already the legacy default; no migration needed",
             target,
-            "dry run confirms no migration is needed unless legacy_schema= is provided"
-            if dry_run else
-            "no migration needed unless legacy_schema= is provided",
         )
         return
 
@@ -166,7 +160,9 @@ def notifications_migrate_schema(*args, **kwargs):
         return
 
     try:
-        # Phase 1: read-only checks — no DDL, safe to fail without side-effects
+        legacy_row_count = 0
+        target_exists = False
+        target_row_count = 0
         with db.get_session() as session:
             legacy_exists = session.execute(text(
                 "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
@@ -189,24 +185,10 @@ def notifications_migrate_schema(*args, **kwargs):
                 "WHERE table_schema = :schema AND table_name = 'notifications')"
             ), {"schema": target}).scalar()
 
-            target_row_count = 0
             if target_exists:
                 target_row_count = session.execute(text(
                     f"SELECT COUNT(*) FROM {target}.notifications"
                 )).scalar()
-
-            duplicate_uuid_count = 0
-            insertable_row_count = 0
-            if target_exists and target_row_count > 0:
-                duplicate_uuid_count = session.execute(text(
-                    f"SELECT COUNT(*) "
-                    f"FROM {legacy}.notifications AS legacy_notifications "
-                    f"WHERE EXISTS ("
-                    f"    SELECT 1 FROM {target}.notifications AS target_notifications "
-                    f"    WHERE target_notifications.uuid = legacy_notifications.uuid"
-                    f")"
-                )).scalar()
-                insertable_row_count = legacy_row_count - duplicate_uuid_count
 
         if dry_run:
             if not target_exists:
@@ -214,80 +196,34 @@ def notifications_migrate_schema(*args, **kwargs):
                     "notifications_migrate_schema: dry_run — would move '%s'.notifications to '%s' (legacy_rows=%d)",
                     legacy, target, legacy_row_count,
                 )
-                return
-
-            if target_row_count == 0:
+            else:
                 log.info(
-                    "notifications_migrate_schema: dry_run — would drop empty '%s'.notifications and move '%s'.notifications into '%s' (legacy_rows=%d)",
-                    target, legacy, target, legacy_row_count,
+                    "notifications_migrate_schema: dry_run — would drop '%s'.notifications (rows=%d) and move '%s'.notifications into '%s' (legacy_rows=%d)",
+                    target, target_row_count, legacy, target, legacy_row_count,
                 )
-                return
-
-            log.info(
-                "notifications_migrate_schema: dry_run — would merge '%s'.notifications into '%s'.notifications "
-                "(legacy_rows=%d target_rows_before=%d would_insert=%d would_skip_existing_uuid=%d)",
-                legacy,
-                target,
-                legacy_row_count,
-                target_row_count,
-                insertable_row_count,
-                duplicate_uuid_count,
-            )
             return
 
-        # Phase 2: move or merge into the configured target schema
         with db.get_session() as session:
-            if not target_exists:
-                session.execute(text(
-                    f"ALTER TABLE {legacy}.notifications SET SCHEMA {target}"
-                ))
-                session.commit()
-                log.info(
-                    "notifications_migrate_schema: moved notifications from '%s' to '%s' (rows=%d)",
-                    legacy, target, legacy_row_count,
-                )
-                return
-
-            if target_row_count == 0:
-                log.info(
-                    "notifications_migrate_schema: dropping empty '%s'.notifications before migration",
-                    target,
-                )
+            if target_exists:
+                if target_row_count > 0:
+                    log.warning(
+                        "notifications_migrate_schema: dropping '%s'.notifications which contains %d rows",
+                        target, target_row_count,
+                    )
+                else:
+                    log.info(
+                        "notifications_migrate_schema: dropping empty '%s'.notifications before migration",
+                        target,
+                    )
                 session.execute(text(f"DROP TABLE {target}.notifications"))
-                session.execute(text(
-                    f"ALTER TABLE {legacy}.notifications SET SCHEMA {target}"
-                ))
-                session.commit()
-                log.info(
-                    "notifications_migrate_schema: moved notifications from '%s' to '%s' (rows=%d)",
-                    legacy, target, legacy_row_count,
-                )
-                return
-
-            inserted_rows = session.execute(text(
-                f"INSERT INTO {target}.notifications ("
-                f"    uuid, is_seen, project_id, user_id, meta, event_type, created_at, updated_at"
-                f") "
-                f"SELECT "
-                f"    legacy_notifications.uuid, legacy_notifications.is_seen, "
-                f"    legacy_notifications.project_id, legacy_notifications.user_id, "
-                f"    legacy_notifications.meta, legacy_notifications.event_type, "
-                f"    legacy_notifications.created_at, legacy_notifications.updated_at "
-                f"FROM {legacy}.notifications AS legacy_notifications "
-                f"WHERE NOT EXISTS ("
-                f"    SELECT 1 FROM {target}.notifications AS target_notifications "
-                f"    WHERE target_notifications.uuid = legacy_notifications.uuid"
-                f")"
-            )).rowcount
-
-            session.execute(text(f"DROP TABLE {legacy}.notifications"))
+            session.execute(text(
+                f"ALTER TABLE {legacy}.notifications SET SCHEMA {target}"
+            ))
             session.commit()
 
-        inserted_rows = inserted_rows or 0
         log.info(
-            "notifications_migrate_schema: merged '%s'.notifications into '%s'.notifications "
-            "(legacy_rows=%d inserted=%d skipped_existing_uuid=%d target_rows_before=%d)",
-            legacy, target, legacy_row_count, inserted_rows, duplicate_uuid_count, target_row_count,
+            "notifications_migrate_schema: moved notifications from '%s' to '%s' (rows=%d)",
+            legacy, target, legacy_row_count,
         )
     except Exception:  # pylint: disable=W0703
         log.exception(
