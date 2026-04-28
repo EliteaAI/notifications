@@ -24,6 +24,9 @@ class Module(module.ModuleModel):
         try:
             from tools import this  # pylint: disable=E0401,C0415
             this.for_module("admin").module.register_admin_task(
+                "notifications_migrate_schema", db_tasks.notifications_migrate_schema
+            )
+            this.for_module("admin").module.register_admin_task(
                 "create_notifications_user_id_index", db_tasks.create_notifications_user_id_index
             )
             this.for_module("admin").module.register_admin_task(
@@ -35,6 +38,9 @@ class Module(module.ModuleModel):
     def deinit(self):
         try:
             from tools import this  # pylint: disable=E0401,C0415
+            this.for_module("admin").module.unregister_admin_task(
+                "notifications_migrate_schema", db_tasks.notifications_migrate_schema
+            )
             this.for_module("admin").module.unregister_admin_task(
                 "create_notifications_user_id_index", db_tasks.create_notifications_user_id_index
             )
