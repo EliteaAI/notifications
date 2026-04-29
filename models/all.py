@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from tools import db_tools, db
+from tools import db_tools, db, config as c
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import Integer, DateTime, func, Boolean, String
@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 class Notification(db.Base):
     __tablename__ = 'notifications'
+    __table_args__ = {'schema': c.POSTGRES_SCHEMA}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     uuid: Mapped[str] = mapped_column(UUID(as_uuid=True), unique=True, default=uuid.uuid4)

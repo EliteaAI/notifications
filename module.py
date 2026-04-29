@@ -24,7 +24,13 @@ class Module(module.ModuleModel):
         try:
             from tools import this  # pylint: disable=E0401,C0415
             this.for_module("admin").module.register_admin_task(
+                "notifications_migrate_schema", db_tasks.notifications_migrate_schema
+            )
+            this.for_module("admin").module.register_admin_task(
                 "create_notifications_user_id_index", db_tasks.create_notifications_user_id_index
+            )
+            this.for_module("admin").module.register_admin_task(
+                "notifications_backfill_messages", db_tasks.notifications_backfill_messages
             )
         except Exception as e:
             log.exception("Failed to register admin tasks: %s", e)
@@ -33,7 +39,13 @@ class Module(module.ModuleModel):
         try:
             from tools import this  # pylint: disable=E0401,C0415
             this.for_module("admin").module.unregister_admin_task(
+                "notifications_migrate_schema", db_tasks.notifications_migrate_schema
+            )
+            this.for_module("admin").module.unregister_admin_task(
                 "create_notifications_user_id_index", db_tasks.create_notifications_user_id_index
+            )
+            this.for_module("admin").module.unregister_admin_task(
+                "notifications_backfill_messages", db_tasks.notifications_backfill_messages
             )
         except Exception as e:
             log.exception("Failed to unregister admin tasks: %s", e)
