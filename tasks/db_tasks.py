@@ -272,6 +272,14 @@ def _build_message_for_row(event_type, meta):
             return f'{initiator} added you to {link}'
         return f'You were added to {link}'
 
+    if et == 'chat_user_mentioned':
+        conv = meta.get('conversation_name') or 'chat'
+        initiator = meta.get('initiator_name')
+        link = f'[{conv}]()'
+        if initiator:
+            return f'{initiator} mentioned you in {link}'
+        return f'You were mentioned in {link}'
+
     if et == 'private_project_created':
         return 'Project was successfully created'
 
