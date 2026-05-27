@@ -13,6 +13,27 @@ class Module(module.ModuleModel):
     def __init__(self, context, descriptor):
         self.context = context
         self.descriptor = descriptor
+        self._register_openapi()
+
+    def _register_openapi(self):
+        """Register API endpoints with OpenAPI registry."""
+        try:
+            from tools import openapi_registry  # pylint: disable=E0401,C0415
+            from .api import v2 as api_v2
+            openapi_registry.register_plugin(
+                plugin_name="notifications",
+                version=self.descriptor.metadata.get("version", "1.0.0"),
+                description="Notifications — list, read, bulk update, and delete user notifications.",
+                tags=[
+                    {
+                        "name": "notifications",
+                        "description": "User notifications management.",
+                    },
+                ],
+                api_module=api_v2,
+            )
+        except Exception as e:  # pylint: disable=W0703
+            log.warning("Failed to register OpenAPI for notifications plugin: %s", e)
 
     def init(self):
         # self.init_db()

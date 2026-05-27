@@ -4,10 +4,22 @@ from ...models.all import Notification
 from ...models.pd.notification import NotificationBaseModel
 from ....elitea_core.utils.constants import PROMPT_LIB_MODE
 
-from tools import api_tools, auth, config as c, db
+from tools import api_tools, auth, config as c, db, register_openapi
+
+_PATH_PARAMS = [
+    {"name": "project_id", "in": "path", "schema": {"type": "integer"},
+     "description": "Project identifier."},
+    {"name": "notification_id", "in": "path", "schema": {"type": "integer"},
+     "description": "Notification identifier."},
+]
 
 
 class PromptLibAPI(api_tools.APIModeHandler):
+    @register_openapi(
+        name="Get Notification",
+        description="Get a single notification by id.",
+        parameters=_PATH_PARAMS,
+    )
     @auth.decorators.check_api({
         "permissions": ["models.notifications.notification.details"],
         "recommended_roles": {
@@ -24,6 +36,11 @@ class PromptLibAPI(api_tools.APIModeHandler):
                 return {"ok": False, "error": "Notification is not found"}, 400
             return json.loads(NotificationBaseModel.from_orm(notification).json()), 200
 
+    @register_openapi(
+        name="Delete Notification",
+        description="Delete a single notification by id.",
+        parameters=_PATH_PARAMS,
+    )
     @auth.decorators.check_api({
         "permissions": ["models.notifications.notification.delete"],
         "recommended_roles": {
@@ -39,6 +56,11 @@ class PromptLibAPI(api_tools.APIModeHandler):
                 return None, 204
             return {"ok": False, "error": "Notification is not found"}, 400
 
+    @register_openapi(
+        name="Mark Notification as Seen",
+        description="Mark a single notification as seen (sets is_seen=true).",
+        parameters=_PATH_PARAMS,
+    )
     @auth.decorators.check_api(
         {
             "permissions": ["models.notifications.notification.update"],
