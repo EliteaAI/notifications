@@ -33,9 +33,28 @@ class NotificationBulkUpdateModel(BaseModel):
     ids: list[int]
     is_seen: bool
 
+    class Config:
+        schema_extra = {
+            "examples": [
+                {
+                    "ids": [1, 2, 3],
+                    "is_seen": True
+                }
+            ]
+        }
+
 
 class NotificationBulkDeleteModel(BaseModel):
     ids: list[int]
+
+    class Config:
+        schema_extra = {
+            "examples": [
+                {
+                    "ids": [1, 2, 3]
+                }
+            ]
+        }
 
 
 class NotificationBulkUpdateResponseModel(BaseModel):

@@ -1,5 +1,5 @@
 from flask import request
-from tools import api_tools, auth, db, config as c, serialize
+from tools import api_tools, auth, db, config as c, serialize, register_openapi
 
 from sqlalchemy import desc, asc
 from ...models.all import Notification
@@ -14,6 +14,30 @@ from ....elitea_core.utils.constants import PROMPT_LIB_MODE
 
 
 class PromptLibAPI(api_tools.APIModeHandler):
+    @register_openapi(
+        name="List Notifications",
+        description="List notifications for the current user with pagination, filtering, and sorting.",
+        parameters=[
+            {"name": "project_id", "in": "path", "schema": {"type": "integer"},
+             "description": "Project identifier."},
+            {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 10},
+             "description": "Maximum number of results to return."},
+            {"name": "offset", "in": "query", "schema": {"type": "integer", "default": 0},
+             "description": "Pagination offset."},
+            {"name": "sort_by", "in": "query", "schema": {"type": "string", "default": "created_at"},
+             "description": "Field to sort by."},
+            {"name": "sort_order", "in": "query", "schema": {"type": "string", "default": "desc"},
+             "description": "Sort order (asc or desc)."},
+            {"name": "only_new", "in": "query", "schema": {"type": "boolean"},
+             "description": "Return only unseen notifications."},
+            {"name": "only_total", "in": "query", "schema": {"type": "boolean"},
+             "description": "Return only the total count, not the rows."},
+            {"name": "search", "in": "query", "schema": {"type": "string"},
+             "description": "Filter by message text (case-insensitive)."},
+            {"name": "event_type", "in": "query", "schema": {"type": "string"},
+             "description": "Filter by event type."},
+        ],
+    )
     @auth.decorators.check_api({
         "permissions": ["models.notifications.notifications.list"],
         "recommended_roles": {
@@ -69,6 +93,15 @@ class PromptLibAPI(api_tools.APIModeHandler):
                 'rows': serialized
             }, 200
 
+    @register_openapi(
+        name="Bulk Update Notifications",
+        description="Bulk mark notifications as seen or unseen.",
+        parameters=[
+            {"name": "project_id", "in": "path", "schema": {"type": "integer"},
+             "description": "Project identifier."},
+        ],
+        request_body=NotificationBulkUpdateModel,
+    )
     @auth.decorators.check_api({
         "permissions": ["models.notifications.notification.update"],
         "recommended_roles": {
@@ -93,6 +126,15 @@ class PromptLibAPI(api_tools.APIModeHandler):
             session.commit()
             return NotificationBulkUpdateResponseModel(updated=len(notifications)).dict(), 200
 
+    @register_openapi(
+        name="Bulk Delete Notifications",
+        description="Bulk delete notifications by a list of ids.",
+        parameters=[
+            {"name": "project_id", "in": "path", "schema": {"type": "integer"},
+             "description": "Project identifier."},
+        ],
+        request_body=NotificationBulkDeleteModel,
+    )
     @auth.decorators.check_api({
         "permissions": ["models.notifications.notification.delete"],
         "recommended_roles": {
