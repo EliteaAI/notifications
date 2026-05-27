@@ -1,6 +1,6 @@
 {
   "name": "Notifications",
-  "version": "0.13",
+  "version": "0.14",
   "depends_on": [
     "elitea_core"
   ],
