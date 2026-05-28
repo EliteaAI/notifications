@@ -12,8 +12,8 @@ from ...elitea_core.utils.sio_utils import get_event_room, SioEvents
 class Event:
     @web.event('notifications_stream')
     def notifications_stream(self, context, event, payload):
-        log.info(f'notifications_stream {event=}')
-        log.info(f'notifications_stream {payload=}')
+        log.debug(f'notifications_stream {event=}')
+        log.debug(f'notifications_stream {payload=}')
 
         parsed = NotificationCreateModel.parse_obj(payload)
 
