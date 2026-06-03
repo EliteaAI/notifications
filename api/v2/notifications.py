@@ -37,6 +37,7 @@ class PromptLibAPI(api_tools.APIModeHandler):
             {"name": "event_type", "in": "query", "schema": {"type": "string"},
              "description": "Filter by event type."},
         ],
+        available_to_users=True,
     )
     @auth.decorators.check_api({
         "permissions": ["models.notifications.notifications.list"],
@@ -101,6 +102,7 @@ class PromptLibAPI(api_tools.APIModeHandler):
              "description": "Project identifier."},
         ],
         request_body=NotificationBulkUpdateModel,
+        available_to_users=True,
     )
     @auth.decorators.check_api({
         "permissions": ["models.notifications.notification.update"],
@@ -134,6 +136,7 @@ class PromptLibAPI(api_tools.APIModeHandler):
              "description": "Project identifier."},
         ],
         request_body=NotificationBulkDeleteModel,
+        available_to_users=True,
     )
     @auth.decorators.check_api({
         "permissions": ["models.notifications.notification.delete"],

@@ -19,6 +19,7 @@ class PromptLibAPI(api_tools.APIModeHandler):
         name="Get Notification",
         description="Get a single notification by id.",
         parameters=_PATH_PARAMS,
+        available_to_users=True,
     )
     @auth.decorators.check_api({
         "permissions": ["models.notifications.notification.details"],
@@ -40,6 +41,7 @@ class PromptLibAPI(api_tools.APIModeHandler):
         name="Delete Notification",
         description="Delete a single notification by id.",
         parameters=_PATH_PARAMS,
+        available_to_users=True,
     )
     @auth.decorators.check_api({
         "permissions": ["models.notifications.notification.delete"],
@@ -60,6 +62,7 @@ class PromptLibAPI(api_tools.APIModeHandler):
         name="Mark Notification as Seen",
         description="Mark a single notification as seen (sets is_seen=true).",
         parameters=_PATH_PARAMS,
+        available_to_users=True,
     )
     @auth.decorators.check_api(
         {
