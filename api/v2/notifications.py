@@ -119,14 +119,19 @@ class PromptLibAPI(api_tools.APIModeHandler):
             return {"ok": False, "error": str(e)}, 400
         with db.get_session() as session:
             user_id = auth.current_user().get("id")
-            notifications = session.query(Notification).filter(
-                Notification.id.in_(payload.ids),
-                Notification.user_id == user_id,
-            ).all()
-            for notification in notifications:
-                notification.is_seen = payload.is_seen
+            if payload.ids == "all":
+                updated_count = session.query(Notification).filter(
+                    Notification.user_id == user_id,
+                    Notification.is_seen != payload.is_seen,
+                ).update({Notification.is_seen: payload.is_seen}, synchronize_session=False)
+            else:
+                updated_count = session.query(Notification).filter(
+                    Notification.id.in_(payload.ids),
+                    Notification.user_id == user_id,
+                    Notification.is_seen != payload.is_seen,
+                ).update({Notification.is_seen: payload.is_seen}, synchronize_session=False)
             session.commit()
-            return NotificationBulkUpdateResponseModel(updated=len(notifications)).dict(), 200
+            return NotificationBulkUpdateResponseModel(updated=updated_count).dict(), 200
 
     @register_openapi(
         name="Bulk Delete Notifications",
