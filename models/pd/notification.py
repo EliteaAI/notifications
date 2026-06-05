@@ -1,7 +1,7 @@
 from uuid import uuid4
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union, Literal
 
 from pydantic.v1 import BaseModel, UUID4, Field
 
@@ -30,7 +30,7 @@ class NotificationCreateModel(BaseModel):
 
 
 class NotificationBulkUpdateModel(BaseModel):
-    ids: list[int]
+    ids: Union[list[int], Literal["all"]]
     is_seen: bool
 
     class Config:
@@ -38,6 +38,10 @@ class NotificationBulkUpdateModel(BaseModel):
             "examples": [
                 {
                     "ids": [1, 2, 3],
+                    "is_seen": True
+                },
+                {
+                    "ids": "all",
                     "is_seen": True
                 }
             ]
