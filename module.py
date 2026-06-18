@@ -1,6 +1,4 @@
-import logging
-
-from pylon.core.tools import log  # pylint: disable=E0611,E0401,W0611
+from pylon.core.tools import log  # pylint: disable=E0611,E0401
 from pylon.core.tools import module
 from tools import auth
 
@@ -91,7 +89,7 @@ class Module(module.ModuleModel):
             event_name='notifications',
             room_id=room_id
         )
-        logging.info(f'SIO CONNECT room: {room}')
+        log.debug('SIO CONNECT room: %s', room)
         if room:
             self.context.sio.enter_room(sid, room)
 
