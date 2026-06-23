@@ -101,7 +101,40 @@ class PromptLibAPI(api_tools.APIModeHandler):
             {"name": "project_id", "in": "path", "schema": {"type": "integer"},
              "description": "Project identifier."},
         ],
-        request_body=NotificationBulkUpdateModel,
+        request_body={
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["ids", "is_seen"],
+                        "properties": {
+                            "ids": {
+                                "oneOf": [
+                                    {"type": "array", "items": {"type": "integer"}},
+                                    {"type": "string", "enum": ["all"]},
+                                ],
+                                "description": "List of notification IDs, or \"all\" to update all notifications.",
+                            },
+                            "is_seen": {
+                                "type": "boolean",
+                                "description": "Mark as seen (true) or unseen (false).",
+                            },
+                        },
+                    },
+                    "examples": {
+                        "specific_ids": {
+                            "summary": "Mark specific notifications as seen",
+                            "value": {"ids": [1, 2, 3], "is_seen": True},
+                        },
+                        "all": {
+                            "summary": "Mark all notifications as seen",
+                            "value": {"ids": "all", "is_seen": True},
+                        },
+                    },
+                }
+            },
+        },
         available_to_users=True,
     )
     @auth.decorators.check_api({
@@ -140,7 +173,25 @@ class PromptLibAPI(api_tools.APIModeHandler):
             {"name": "project_id", "in": "path", "schema": {"type": "integer"},
              "description": "Project identifier."},
         ],
-        request_body=NotificationBulkDeleteModel,
+        request_body={
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["ids"],
+                        "properties": {
+                            "ids": {
+                                "type": "array",
+                                "items": {"type": "integer"},
+                                "description": "List of notification IDs to delete.",
+                            }
+                        },
+                    },
+                    "example": {"ids": [1, 2, 3]},
+                }
+            },
+        },
         available_to_users=True,
     )
     @auth.decorators.check_api({
