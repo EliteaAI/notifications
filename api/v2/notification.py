@@ -18,6 +18,8 @@ class PromptLibAPI(api_tools.APIModeHandler):
     @register_openapi(
         name="Get Notification",
         description="Get a single notification by id.",
+        mcp_tool=True,
+        mcp_description="Use this tool when you already know a notification's id and need its full details (title, body, seen state, timestamps). Do not use it to browse or search notifications — use List Notifications for that. Read-only; it never modifies the notification.",
         parameters=_PATH_PARAMS,
         available_to_users=True,
     )
@@ -61,6 +63,8 @@ class PromptLibAPI(api_tools.APIModeHandler):
     @register_openapi(
         name="Mark Notification as Seen",
         description="Mark a single notification as seen (sets is_seen=true).",
+        mcp_tool=True,
+        mcp_description="Use this tool to mark one notification as read once its content has been handled, identified by its id. Do not use it to delete notifications or to mark many at once. This is a safe, idempotent write that only flips is_seen to true.",
         parameters=_PATH_PARAMS,
         available_to_users=True,
     )

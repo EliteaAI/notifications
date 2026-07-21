@@ -17,6 +17,8 @@ class PromptLibAPI(api_tools.APIModeHandler):
     @register_openapi(
         name="List Notifications",
         description="List notifications for the current user with pagination, filtering, and sorting.",
+        mcp_tool=True,
+        mcp_description="Use this tool to browse the current user's notifications — filter by unseen (only_new), search text, or event type, and paginate. Use only_total to get just the unread count. Do not use it to change or delete notifications. Read-only.",
         parameters=[
             {"name": "project_id", "in": "path", "schema": {"type": "integer"},
              "description": "Project identifier."},
