@@ -245,24 +245,68 @@ def create_notifications_user_id_index(*args, **kwargs):
         log.exception("create_notifications_user_id_index: failed")
 
 
+DEFAULT_INDEX_ITEM_LABELS = {'singular': 'document', 'plural': 'documents'}
+DEFAULT_INDEX_DEPENDENT_LABELS = {'singular': 'attachment', 'plural': 'attachments'}
+
+
+def _index_noun(count, labels, default):
+    labels = labels or default
+    return labels.get('singular' if count == 1 else 'plural', default['plural'])
+
+
+def _build_index_data_message(meta):
+    """Message for a finished indexing run.
+
+    TWIN of elitea_core's ``utils/indexing_report.py``, which writes these messages
+    live; this copy only backfills rows stored before that existed. Keep both in step.
+    """
+    index_name = meta.get('index_name') or 'Index'
+    link = f'[{index_name}]()'
+    if (meta.get('error') or '').strip():
+        return f'Index {link} is failed.'
+
+    scheduled_text = ' by schedule' if meta.get('initiator', '') == 'schedule' else ''
+    report = meta.get('report')
+    if isinstance(report, str) and report.strip():
+        try:
+            report = json.loads(report)
+        except (TypeError, ValueError):
+            report = None
+    totals = (report or {}).get('totals') or {}
+    item_labels = (report or {}).get('item_labels')
+    unchanged = totals.get('unchanged') or 0
+    # Only a report can establish that a run changed nothing; a bare count cannot.
+    if report and (totals.get('indexed') or 0) == 0 and not (totals.get('failed') or 0) and unchanged > 0:
+        unchanged_noun = _index_noun(unchanged, item_labels, DEFAULT_INDEX_ITEM_LABELS)
+        return f'Index {link} is up to date{scheduled_text} — {unchanged} {unchanged_noun} unchanged.'
+
+    indexed = totals.get('indexed', meta.get('indexed') or 0) or 0
+    parts = [f'{indexed} {_index_noun(indexed, item_labels, DEFAULT_INDEX_ITEM_LABELS)} indexed']
+    for key, wording in (('skipped', 'skipped'), ('not_indexed', 'not indexed'), ('failed', 'failed')):
+        count = totals.get(key) or 0
+        if count > 0:
+            parts.append(f'{count} {wording}')
+    if unchanged:
+        parts.append(f'{unchanged} unchanged')
+    breakdown = ', '.join(parts)
+
+    dependent = totals.get('dependent_not_indexed') or 0
+    if dependent:
+        dependent_noun = _index_noun(
+            dependent, (report or {}).get('dependent_labels'), DEFAULT_INDEX_DEPENDENT_LABELS)
+        breakdown += f' ({dependent} {dependent_noun} not indexed)'
+
+    if meta.get('reindex'):
+        return f'Index {link} is successfully reindexed{scheduled_text}. {breakdown}.'
+    return f'Index {link} is successfully created. {breakdown}.'
+
+
 def _build_message_for_row(event_type, meta):
     """Synthesise meta['message'] for a single row. Returns None if unable to build."""
     et = event_type or ''
 
     if et == 'index_data_changed':
-        index_name = meta.get('index_name') or 'Index'
-        error = (meta.get('error') or '').strip()
-        reindex = meta.get('reindex')
-        indexed = meta.get('indexed') or 0
-        updated = meta.get('updated') or 0
-        initiator = meta.get('initiator', '')
-        link = f'[{index_name}]()'
-        if error:
-            return f'Index {link} is failed.'
-        if reindex:
-            scheduled_text = ' by schedule' if initiator == 'schedule' else ''
-            return f'Index {link} is successfully reindexed{scheduled_text}. {{"reindexed": {updated}, "indexed": {indexed}}}'
-        return f'Index {link} is successfully created: {{"indexed": {indexed}}}'
+        return _build_index_data_message(meta)
 
     if et == 'chat_user_added':
         conv = meta.get('conversation_name') or 'chat'
