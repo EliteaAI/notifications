@@ -254,6 +254,26 @@ def _index_noun(count, labels, default):
     return labels.get('singular' if count == 1 else 'plural', default['plural'])
 
 
+def _summarize_index_error(error):
+    """Single-line error summary capped at ~200 characters."""
+    summary = ' '.join(str(error or '').split())
+    if len(summary) > 200:
+        summary = summary[:200].rstrip() + '…'
+    return summary
+
+
+def _index_retains_data(meta):
+    """The single retention predicate: `indexed_chunks` is the live pending-excluded
+    count recomputed at failure time, so it is the only field that proves searchable
+    rows exist. Never gate a retention claim on `reindex` — that is a remembered
+    history fact which stays truthy over an EMPTY index (a zero-chunk completed first
+    run, a whole-index delete)."""
+    try:
+        return float(meta.get('indexed_chunks') or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
 def _build_index_data_message(meta):
     """Message for a finished indexing run.
 
@@ -262,10 +282,10 @@ def _build_index_data_message(meta):
     """
     index_name = meta.get('index_name') or 'Index'
     link = f'[{index_name}]()'
-    if (meta.get('error') or '').strip():
-        return f'Index {link} is failed.'
+    state = meta.get('state') or ''
+    if state == 'discarded':
+        return None
 
-    scheduled_text = ' by schedule' if meta.get('initiator', '') == 'schedule' else ''
     report = meta.get('report')
     if isinstance(report, str) and report.strip():
         try:
@@ -274,6 +294,29 @@ def _build_index_data_message(meta):
             report = None
     totals = (report or {}).get('totals') or {}
     item_labels = (report or {}).get('item_labels')
+
+    error = _summarize_index_error(meta.get('error'))
+
+    if state == 'partly_indexed':
+        failed = totals.get('failed') or meta.get('failed') or 0
+        failed_noun = _index_noun(failed, item_labels, DEFAULT_INDEX_ITEM_LABELS)
+        return (
+            f'Index {link} was partially reindexed: {failed} {failed_noun} could not be updated'
+            f' ({error}). Their previously indexed data remains available for search.'
+        )
+
+    if state == 'failed' or (not state and error):
+        retained = (
+            ' Previously indexed data remains available for search.'
+            if _index_retains_data(meta) else ''
+        )
+        if not meta.get('reindex'):
+            return f'Indexing of {link} failed: {error}.{retained}'
+        if meta.get('initiator', '') == 'schedule':
+            return f'Index {link} scheduled reindex failed: {error}.{retained}'
+        return f'Index {link} reindex failed: {error}.{retained}'
+
+    scheduled_text = ' by schedule' if meta.get('initiator', '') == 'schedule' else ''
     unchanged = totals.get('unchanged') or 0
     # Only a report can establish that a run changed nothing; a bare count cannot.
     if report and (totals.get('indexed') or 0) == 0 and not (totals.get('failed') or 0) and unchanged > 0:
