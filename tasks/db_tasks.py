@@ -247,6 +247,7 @@ def create_notifications_user_id_index(*args, **kwargs):
 
 DEFAULT_INDEX_ITEM_LABELS = {'singular': 'document', 'plural': 'documents'}
 DEFAULT_INDEX_DEPENDENT_LABELS = {'singular': 'attachment', 'plural': 'attachments'}
+INDEX_RETENTION_CLAIM = 'Previously indexed data remains available for search.'
 
 
 def _index_noun(count, labels, default):
@@ -255,8 +256,16 @@ def _index_noun(count, labels, default):
 
 
 def _summarize_index_error(error):
-    """Single-line error summary capped at ~200 characters."""
+    """Single-line error summary capped at ~200 characters.
+
+    The retention claim belongs to this layer, which decides it from the live chunk count:
+    an SDK message that already ends with the sentence would otherwise render it twice. The
+    sentence the builder wraps the summary in supplies the closing period too.
+    """
     summary = ' '.join(str(error or '').split())
+    if summary.endswith(INDEX_RETENTION_CLAIM):
+        summary = summary[:-len(INDEX_RETENTION_CLAIM)].rstrip()
+    summary = summary.rstrip('.')
     if len(summary) > 200:
         summary = summary[:200].rstrip() + '…'
     return summary
@@ -300,9 +309,21 @@ def _build_index_data_message(meta):
     if state == 'partly_indexed':
         failed = totals.get('failed') or meta.get('failed') or 0
         failed_noun = _index_noun(failed, item_labels, DEFAULT_INDEX_ITEM_LABELS)
+        # A partly_indexed run can carry no failure count at all: the SDK's damaged-doc
+        # path fills none of the report's FAILED groups, and a backfilled row stored no
+        # report either. Name the quantity vaguely rather than claim a zero.
+        subject = f'{failed} {failed_noun}' if failed else f'some {failed_noun}'
+        verb = 'reindexed' if meta.get('reindex') else 'indexed'
+        # The retention clause speaks about the FAILED items, whose chunks this run never
+        # wrote, so `indexed_chunks` — which counts the run's own promoted chunks — cannot
+        # carry it alone: on a first index those items have no earlier generation at all.
+        retained = (
+            ' Their previously indexed data remains available for search.'
+            if meta.get('reindex') and _index_retains_data(meta) else ''
+        )
         return (
-            f'Index {link} was partially reindexed: {failed} {failed_noun} could not be updated'
-            f' ({error}). Their previously indexed data remains available for search.'
+            f'Index {link} was partially {verb}: {subject} could not be updated'
+            f' ({error}).{retained}'
         )
 
     if state == 'failed' or (not state and error):
