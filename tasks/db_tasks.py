@@ -247,11 +247,40 @@ def create_notifications_user_id_index(*args, **kwargs):
 
 DEFAULT_INDEX_ITEM_LABELS = {'singular': 'document', 'plural': 'documents'}
 DEFAULT_INDEX_DEPENDENT_LABELS = {'singular': 'attachment', 'plural': 'attachments'}
+INDEX_RETENTION_CLAIM = 'Previously indexed data remains available for search.'
 
 
 def _index_noun(count, labels, default):
     labels = labels or default
     return labels.get('singular' if count == 1 else 'plural', default['plural'])
+
+
+def _summarize_index_error(error):
+    """Single-line error summary capped at ~200 characters.
+
+    The retention claim belongs to this layer, which decides it from the live chunk count:
+    an SDK message that already ends with the sentence would otherwise render it twice. The
+    sentence the builder wraps the summary in supplies the closing period too.
+    """
+    summary = ' '.join(str(error or '').split())
+    if summary.endswith(INDEX_RETENTION_CLAIM):
+        summary = summary[:-len(INDEX_RETENTION_CLAIM)].rstrip()
+    summary = summary.rstrip('.')
+    if len(summary) > 200:
+        summary = summary[:200].rstrip() + '…'
+    return summary
+
+
+def _index_retains_data(meta):
+    """The single retention predicate: `indexed_chunks` is the live pending-excluded
+    count recomputed at failure time, so it is the only field that proves searchable
+    rows exist. Never gate a retention claim on `reindex` — that is a remembered
+    history fact which stays truthy over an EMPTY index (a zero-chunk completed first
+    run, a whole-index delete)."""
+    try:
+        return float(meta.get('indexed_chunks') or 0) > 0
+    except (TypeError, ValueError):
+        return False
 
 
 def _build_index_data_message(meta):
@@ -262,10 +291,10 @@ def _build_index_data_message(meta):
     """
     index_name = meta.get('index_name') or 'Index'
     link = f'[{index_name}]()'
-    if (meta.get('error') or '').strip():
-        return f'Index {link} is failed.'
+    state = meta.get('state') or ''
+    if state == 'discarded':
+        return None
 
-    scheduled_text = ' by schedule' if meta.get('initiator', '') == 'schedule' else ''
     report = meta.get('report')
     if isinstance(report, str) and report.strip():
         try:
@@ -274,6 +303,41 @@ def _build_index_data_message(meta):
             report = None
     totals = (report or {}).get('totals') or {}
     item_labels = (report or {}).get('item_labels')
+
+    error = _summarize_index_error(meta.get('error'))
+
+    if state == 'partly_indexed':
+        failed = totals.get('failed') or meta.get('failed') or 0
+        failed_noun = _index_noun(failed, item_labels, DEFAULT_INDEX_ITEM_LABELS)
+        # A partly_indexed run can carry no failure count at all: the SDK's damaged-doc
+        # path fills none of the report's FAILED groups, and a backfilled row stored no
+        # report either. Name the quantity vaguely rather than claim a zero.
+        subject = f'{failed} {failed_noun}' if failed else f'some {failed_noun}'
+        verb = 'reindexed' if meta.get('reindex') else 'indexed'
+        # The retention clause speaks about the FAILED items, whose chunks this run never
+        # wrote, so `indexed_chunks` — which counts the run's own promoted chunks — cannot
+        # carry it alone: on a first index those items have no earlier generation at all.
+        retained = (
+            ' Their previously indexed data remains available for search.'
+            if meta.get('reindex') and _index_retains_data(meta) else ''
+        )
+        return (
+            f'Index {link} was partially {verb}: {subject} could not be updated'
+            f' ({error}).{retained}'
+        )
+
+    if state == 'failed' or (not state and error):
+        retained = (
+            ' Previously indexed data remains available for search.'
+            if _index_retains_data(meta) else ''
+        )
+        if not meta.get('reindex'):
+            return f'Indexing of {link} failed: {error}.{retained}'
+        if meta.get('initiator', '') == 'schedule':
+            return f'Index {link} scheduled reindex failed: {error}.{retained}'
+        return f'Index {link} reindex failed: {error}.{retained}'
+
+    scheduled_text = ' by schedule' if meta.get('initiator', '') == 'schedule' else ''
     unchanged = totals.get('unchanged') or 0
     # Only a report can establish that a run changed nothing; a bare count cannot.
     if report and (totals.get('indexed') or 0) == 0 and not (totals.get('failed') or 0) and unchanged > 0:
