@@ -460,11 +460,12 @@ def _build_message_for_row(event_type, meta):
         name = meta.get('prompt_name') or 'prompt'
         return f'{author} requested publish approval for {name}.'
     if et == 'user_was_added_to_some_project_as_teammate':
+        users = meta.get('users')
         project_name = meta.get('project_name')
-        if isinstance(project_name, str) and project_name.strip():
+        if not isinstance(users, list) and isinstance(project_name, str) and project_name.strip():
             return f'You have been added to {project_name} project.'
-        users = meta.get('users') or []
-        project = meta.get('project_name') or 'project'
+        users = users or []
+        project = project_name or 'project'
         users_str = ', '.join(users) if users else 'You'
         verb = 'are' if len(users) > 1 else 'is'
         return f'{users_str} {verb} added into {project}.'
