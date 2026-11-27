@@ -463,7 +463,15 @@ def _build_message_for_row(event_type, meta):
         users = meta.get('users')
         project_name = meta.get('project_name')
         if not isinstance(users, list) and isinstance(project_name, str) and project_name.strip():
-            return f'You have been added to {project_name} project.'
+            roles = meta.get('roles')
+            role_names = [
+                r.strip() for r in roles if isinstance(r, str) and r.strip()
+            ] if isinstance(roles, list) else []
+            role_suffix = (
+                ' as ' + ', '.join(r[:1].upper() + r[1:] for r in role_names)
+                if role_names else ''
+            )
+            return f'You have been added to {project_name} project{role_suffix}.'
         users = users or []
         project = project_name or 'project'
         users_str = ', '.join(users) if users else 'You'
